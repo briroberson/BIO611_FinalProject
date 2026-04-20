@@ -11,12 +11,23 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 
-```{r load libraries and packages}
+```{r load libraries and packages, set plotting theme}
 library(dplyr)
 library(ggplot2)
+library(maps)
+library(rcartocolor)
 
 
+theme<-theme(
+      plot.title = element_text(face="bold", size = 18, hjust = 0.5),
+      axis.title.y = element_text(face="bold", size = 12), 
+      axis.text.y = element_text(size = 12),
+      axis.title.x = element_text(size = 12, face = "bold",color = "black"),
+      axis.text.x=element_text(size=12),
+      plot.margin = unit(c(0.1,0.1,0,0.1),"cm"))
 
+#Hex color bank for visualizations: 
+#0a688a blue
 
 ```
 
@@ -24,23 +35,40 @@ library(ggplot2)
 
 ```{r bat map data exploration}
 
-bat_occ <- data.table::fread("0032207-260409193756587.csv") #This is the dataset for the entire United States occurances 
+bat_occ <- data.table::fread("0032207-260409193756587.csv") #This is the dataset for the entire United States occurrences 
 str(bat_occ)
 
-#Filter for occurances within state of Georgia only 
-bat_occ_GA <- bat_occ %>% 
-  filter(stateProvince == "Georgia") 
+#Many occurrences do not include coordinates or lie outside the US, so I filter those out here 
+bat_map <- bat_occ[
+  !is.na(decimalLatitude) & 
+  !is.na(decimalLongitude) &
+  decimalLatitude >= 27 & decimalLatitude <= 45 &
+  decimalLongitude >= -125 & decimalLongitude <= -66
+]
 
-unique(bat_occ_GA$stateProvince) #just Georgia!
-str(bat_occ_GA)
-
-#A lot of the older entries (from journals, museum collections, etc) don't have coordinates, so we filter these out 
-bat_map <- bat_occ_GA[!is.na(decimalLatitude) & !is.na(decimalLongitude)]
- 
+str(bat_map)
 ```
 
 
-```{r}
+```{r creating the map}
+
+bat_map_viz <- ggplot(bat_map, aes(x = decimalLongitude, y = decimalLatitude, color = year)) +
+   borders("state", fill = "white", color = "black") +
+  geom_point(size = 2, alpha = 0.8) +
+  scale_color_carto_c(palette = "Earth") +
+  coord_fixed(1.3) +
+  theme(
+    panel.grid = element_blank(), 
+    panel.background = element_blank()
+  ) +
+  labs(
+       color = "Year", 
+  x = "decimal Longitude (°)",
+  y = "decimal Latitude (°)"
+) + 
+  theme 
+
+bat_map_viz
 
 ```
 
