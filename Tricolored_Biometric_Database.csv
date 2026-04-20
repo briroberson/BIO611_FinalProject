@@ -1,16 +1,3 @@
-"Disparities in Perimyotis subflavus body mass between cave and culvert hibernacula in Georgia, USA",,,,,,,,,,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,
-"Ferrall, E.A.1,2, S. Perea1, K.M. Morris2, P.E. Pattavina3, B.J. Irwin4, J. Hepinstall-Cymerman1, and S.B. Castleberry1*",,,,,,,,,,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,
-"1Warnell School of Forestry and Natural Resources, University of Georgia, 180 E Green Street, Athens, GA 30602, USA",,,,,,,,,,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,
-"2Wildlife Conservation Section, Georgia Department of Natural Resources, Highway 278 SE Social Circle, GA 30025, USA",,,,,,,,,,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,
-"3United States Fish and Wildlife Service, Ecological Services, 355 East Hancock Avenue Room 320, Athens, GA, 30601, USA",,,,,,,,,,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,
-"4U.S. Geological Survey, Georgia Cooperative Fish & Wildlife Unit, Warnell School of Forestry and Natural Resources, University of Georgia, Athens, GA 30602, USA.",,,,,,,,,,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,
 site_num,site,date,type,timing,length_m,Latitude,Longitide,utmN,roost,species,age,sex,repro_status,mass,FA,Pd_area,Pd_known,vis_WNS,bat_temp,WDI,band_num,band_type,year
 24,Statesboro Occupied Site Pair,12/3/2020,Culvert,Early,,32.238912,-81.677041,3567118.137,HC,PESU,A,F,NR,6.32,35.67,Pd_neg,,No,14.9,0,GA2053,New,2021
 27,Savannah Culvert,12/2/2020,Culvert,Early,,31.869735,-81.334284,3526044.971,WH,PESU,A,F,NR,7,34,Pd_neg,,No,,0,GA0564,New,2021

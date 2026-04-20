@@ -16,6 +16,7 @@ library(dplyr)
 library(ggplot2)
 library(maps)
 library(rcartocolor)
+library(sf)
 
 
 theme<-theme(
@@ -69,6 +70,41 @@ bat_map_viz <- ggplot(bat_map, aes(x = decimalLongitude, y = decimalLatitude, co
   theme 
 
 bat_map_viz
+
+```
+## Now let's actually work with the main data 
+
+```{r data exploration}
+batmass <- read.csv("Tricolored_Biometric_Database.csv")
+
+#Take a peek 
+summary(batmass)
+str(batmass)
+
+#When did sampling occur? 
+unique(batmass$year)
+
+#This data includes caves and culverts, so I will filter for culverts only 
+batmass_filt <- batmass %>%
+  filter(type == "Culvert")
+str(batmass_filt)
+unique(batmass_filt$type) #worked 
+
+#How many culverts are there? 
+unique(batmass_filt$site) #29
+
+
+```
+```{r culvert locations}
+#longitude is actually misspelled so I'll fix that before mapping 
+names(batmass)[names(batmass) == "Longitide"] <- "Longitude"
+str(batmass)
+
+#transform coordinates to a referenced sf object
+culvert_sf <- st_as_sf(df,
+                  coords = c("Longitude", "Latitude"),
+                  crs = 4326)  # WGS84 lat/long
+
 
 ```
 
