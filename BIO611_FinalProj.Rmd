@@ -1,0 +1,46 @@
+---
+title: "BIO611 Final Project Analysis & Viz"
+author: "Briana Roberson"
+date: "2026-04-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r load libraries and packages}
+library(dplyr)
+library(ggplot2)
+
+
+
+
+```
+
+## First visualization: Observations of tricolored bats over time using GBIF species occurrence data
+
+```{r bat map data exploration}
+
+bat_occ <- data.table::fread("0032207-260409193756587.csv") #This is the dataset for the entire United States occurances 
+str(bat_occ)
+
+#Filter for occurances within state of Georgia only 
+bat_occ_GA <- bat_occ %>% 
+  filter(stateProvince == "Georgia") 
+
+unique(bat_occ_GA$stateProvince) #just Georgia!
+str(bat_occ_GA)
+
+#A lot of the older entries (from journals, museum collections, etc) don't have coordinates, so we filter these out 
+bat_map <- bat_occ_GA[!is.na(decimalLatitude) & !is.na(decimalLongitude)]
+ 
+```
+
+
+```{r}
+
+```
+
