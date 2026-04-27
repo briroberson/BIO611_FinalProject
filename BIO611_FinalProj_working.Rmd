@@ -1,0 +1,396 @@
+---
+title: "BIO611 Final Project Analysis & Viz"
+author: "Briana Roberson"
+date: "2026-04-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r load libraries and packages, set plotting theme}
+library(tidyverse)
+library(ggplot2)
+library(maps)
+library(rcartocolor)
+library(sf)
+library(terra)
+library(tigris)
+library(glmmTMB)
+library(AICcmodavg)
+library(DHARMa)
+library(car)
+library(patchwork)
+
+
+theme<-theme(
+      plot.title = element_text(face="bold", size = 18, hjust = 0.5),
+      axis.title.y = element_text(face="bold", size = 12), 
+      axis.text.y = element_text(size = 12),
+      axis.title.x = element_text(size = 12, face = "bold",color = "black"),
+      axis.text.x=element_text(size=12),
+      plot.margin = unit(c(0.1,0.1,0,0.1),"cm"))
+
+#color bank for visualizations: 
+#0a688a blue
+#rcartocolor palate: "Earth"
+# "peru" for brown analog to Earth palate (haha)
+
+```
+
+## First visualization: Observations of tricolored bats over time using GBIF species occurrence data
+
+```{r bat map data exploration}
+
+bat_occ <- data.table::fread("0032207-260409193756587.csv") #This is the dataset for the entire United States occurrences 
+str(bat_occ)
+
+#Many occurrences do not include coordinates or lie outside the US, so I filter those out here 
+bat_map <- bat_occ[
+  !is.na(decimalLatitude) & 
+  !is.na(decimalLongitude) &
+  decimalLatitude >= 27 & decimalLatitude <= 45 &
+  decimalLongitude >= -125 & decimalLongitude <= -66
+]
+
+str(bat_map)
+```
+
+
+```{r creating the map}
+
+bat_map_viz <- ggplot(bat_map, aes(x = decimalLongitude, y = decimalLatitude, color = year)) +
+   borders("state", fill = "white", color = "black") +
+  geom_point(size = 2, alpha = 0.8) +
+  scale_color_carto_c(palette = "Earth") +
+  coord_fixed(1.3) +
+  theme(
+    panel.grid = element_blank(), 
+    panel.background = element_blank()
+  ) +
+  labs(
+       color = "Year", 
+  x = "decimal Longitude (°)",
+  y = "decimal Latitude (°)"
+) + 
+  theme 
+
+bat_map_viz
+
+```
+## Now let's actually work with the main data 
+
+```{r data exploration}
+batmass <- read.csv("Tricolored_Biometric_Recap_loss_prop_Database.csv")
+
+#Take a peek 
+summary(batmass)
+str(batmass)
+
+#When did sampling occur? 
+unique(batmass$year)
+
+batmass_filt <- batmass %>% drop_na(prop.loss) #remove bats with no proportional mass loss
+batmass_filt <- batmass_filt %>% drop_na(year) #remove obs with no year 
+
+
+#longitude is actually misspelled so I'll fix that before mapping 
+names(batmass_filt)[names(batmass_filt) == "Longitide"] <- "Longitude"
+str(batmass_filt)
+
+batmass_filt_culvs <- batmass_filt %>% 
+  filter(type == "Culvert")
+
+culvert_map_viz <- ggplot(batmass_filt_culvs, aes(x = Longitude, y = Latitude, color = Pd_area)) +
+  borders("state", region = 'georgia', fill = "grey90", color = "black") +
+  geom_point(size = 1.5, alpha = 0.8) +
+  scale_color_manual(values = c(
+    "Pd_pos" = "#0a688a",
+    "Pd_neg" = "peru" 
+  )) +
+  coord_fixed(1.3) +
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  labs(
+    color = "Pd presence"
+  ) + 
+  theme
+
+culvert_map_viz
+
+```
+##Time to load in the land cover  
+
+```{r NLCD data}
+nlcd <- rast("nlcd_2019_land_cover_l48_20210604.img") #convert to raster object 
+plot(nlcd) #looks good 
+
+#crop to Georgia state extent 
+ga <- states(cb = TRUE)
+ga <- ga[ga$STUSPS == "GA", ]
+ga <- vect(ga)
+plot(ga) #yup, that's GA
+ga <- project(ga, crs(nlcd)) #make sure coord system matches 
+nlcd_ga <- crop(nlcd, ga) #crop to bounding box 
+nlcd_ga <- mask(nlcd_ga, ga) #match extents 
+
+crs(nlcd_ga) #let's fix the projection 
+nlcd_prj <- project(nlcd_ga, "EPSG:4326", method = "near") #project to WGS1984 
+crs(nlcd_prj) #better 
+
+#this takes a while, so I'll save as an RDS for the future 
+saveRDS(nlcd_prj, "nlcd_ga.rds")
+nlcd_prj <- readRDS("nlcd_ga.rds")
+```
+
+
+## Determining cover type around each culvert 
+
+#1.1 Re-categorizing cover types 
+```{r}
+plot(nlcd_prj)
+
+freq(nlcd_prj) #what classes are present?
+
+#creating a reclassification matrix 
+#format: from, to, becomes (i.e. class 11 to 11 becomes 1, for water)
+rcl <- matrix(c(
+  11, 11, 1L,   # water -> 1
+  21, 24, 2L,   # developed -> 2
+  41, 43, 3L,   # forest -> 3
+  81, 82, 4L,   # agriculture -> 4
+  90, 95, 5L    # wetlands -> 5
+), ncol = 3, byrow = TRUE)
+
+
+nlcd_num <- as.int(nlcd_prj) #make sure the classes aren't categorical for reclassifying 
+nlcd_reclass <- classify(nlcd_num, rcl, others = 6L, include.lowest = TRUE) #assign others as 6 
+nlcd_reclass <- as.int(nlcd_reclass) #again, make sure integer format 
+
+freq(nlcd_reclass) #looks good 
+
+
+#Let's plot it 
+classes <- c("Water", "Developed", "Forest", "Agriculture", "Wetlands", "Other")
+cols <- c("deepskyblue4", "coral3", "darkgreen", "darkgoldenrod2", "darkolivegreen3", "grey50")
+
+
+plot(nlcd_reclass,
+     col = cols,
+     type = "classes",
+     plg = list(title = "Land Cover", legend = classes, cex = 1.5),
+     add = FALSE) 
+points(batmass_filt_culvs$Longitude,
+       batmass_filt_culvs$Latitude,
+       pch = 16,
+       cex = 1) #this doesn't work in markdown, but it works in the console. 
+```
+
+#1.2 Determining coverage within buffers 
+```{r cover by culvert}
+
+#first, format the points 
+site_pts <- batmass_filt %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) %>% #WGS1984
+  st_transform(26918) #UTM zone 18N (georgia)
+
+
+#define a 9000m buffer around points (Cable & Willcox, 2024)
+buffers <- st_buffer(site_pts, dist = 9000)
+plot(st_geometry(buffers))
+crs(buffers)
+
+#check projection of ncld raster 
+crs(nlcd_reclass) #need to project 
+nlcd_proj <- terra::project(nlcd_reclass, "EPSG:26918", method = "near")
+crs(nlcd_proj)
+
+#this takes a while(again), so I'll save as another RDS 
+saveRDS(nlcd_proj, "nlcd_proj.rds")
+nlcd_proj <- readRDS("nlcd_proj.rds")
+
+nlcd_crop <- crop(nlcd_proj, vect(buffers)) #crop to buffer extents to reduce processing time
+plot(nlcd_crop,
+     col = cols,
+     type = "classes",
+     plg = list(title = "Land Cover",
+                cex = 0.8))
+
+
+cover_vals <- terra::extract(nlcd_crop, vect(buffers))
+cover_vals$site <- buffers$site[cover_vals$ID] #joining back culvert IDs
+freq_tab <- table(cover_vals$site, cover_vals[,2]) #number of pixels of each cover class for each culvert 
+freq_tab
+prop_tab <- prop.table(freq_tab, margin = 1) #proportion of cover class (out  of total pixels) for each culvert 
+prop_tab
+
+#save as a df 
+site_cover <- as.data.frame.matrix(prop_tab)
+site_cover$site <- rownames(site_cover) #add culvert id as a column instead of rownames 
+rownames(site_cover) <- NULL
+colnames(site_cover)[1:6] <- classes
+
+#these steps also take a little while to compute, so save progress here again 
+saveRDS(site_cover, "site_cover.RDS")
+site_cover <- readRDS("site_cover.RDS")
+
+```
+
+##Time for some stats 
+
+```{r data prep}
+
+#join the datasets back together 
+summary(site_cover)
+batmass_filt$site<- as.factor(batmass_filt$site)
+all_data <- batmass_filt %>%
+  left_join(site_cover, by = "site")
+
+summary(all_data)
+
+#make sure data are all in the right types 
+all_data$site <- as.factor(all_data$site)
+all_data$type <- as.factor(all_data$type)
+all_data$utmN <- as.integer(all_data$utmN)
+all_data$sex <- as.factor(all_data$sex)
+all_data$WNS_status <- as.factor(all_data$Pd_area)
+all_data$year <- as.integer(all_data$year)
+
+#what does the data look like now? 
+table(all_data$sex)
+table(all_data$type)
+table(all_data$Pd_area)
+table(all_data$year)
+table(all_data$site)
+
+#create subsets 
+subM = subset(all_data, sex %in% c("M"))
+subF = subset(all_data, sex %in% c("F"))
+
+subM_culv = subset(subM, type %in% c("Culvert"))
+subF_culv = subset(subF, type %in% c("Culvert"))
+
+unique(subM_culv$site) #18 total
+
+#what does the mass data look like? 
+hist(subM_culv$prop.loss)
+hist(subF_culv$prop.loss)
+
+
+shapiro.test(subM_culv$prop.loss)
+shapiro.test(subF_culv$prop.loss)
+
+#normal except males, but given the sample size I think it's okay 
+
+
+```
+```{r initial viz}
+
+#what does mass loss look like for the subsets? 
+boxplot(subF_culv$prop.loss, subM_culv$prop.loss, names = c("culvert F",  "culvert M"), xlab = "Roost Location", ylab = "loss (g)")
+
+
+#what do land cover proportions look like? 
+boxplot(all_data$Forest, all_data$Developed, all_data$Water, all_data$Agriculture, names = c("Forest", "Developed", "Water", "Agriculture"), xlab = "Cover type", ylab = "Proportion in site buffer")
+#water and ag almost nonexistent , forest dominant cover type 
+
+
+```
+
+
+
+```{r modelling}
+
+#full model str: mass ~ Developed + Forest + Pd_area + (1 | site) + (1 | year)
+
+#using a beta distribution bc modelling a proportion 
+
+
+#------- MODELS ---------------------------------------------------------------
+mod_culvM <- glmmTMB(prop.loss ~ Developed + Forest + Pd_area + (1|site_num), family="beta_family", data = subM_culv)
+summary(mod_culvM)
+Anova(mod_culvM)
+
+mod_culvF <- glmmTMB(prop.loss ~ Developed + Forest + Pd_area + (1|site_num), family="beta_family", data = subF_culv)
+summary(mod_culvF)
+Anova(mod_culvF)
+
+#Check assumptions 
+resids <- simulateResiduals(mod_culvM, plot = TRUE)
+resids2 <- simulateResiduals(mod_culvF, plot = TRUE)
+
+#Looks good! 
+
+
+```
+```{r time to plot the results}
+
+dev_M_plot <- ggplot(subM_culv, aes(x = Developed, y = prop.loss)) + 
+  geom_point(color = "black") +
+ geom_smooth(method = "lm", color = "coral3", fill = "coral3", alpha = 0.2) + 
+  labs(
+  x = "Proportion of developed land cover",
+  y = "Proportion of body mass lost (M)"
+) + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  theme 
+
+dev_F_plot <- ggplot(subF_culv, aes(x = Developed, y = prop.loss)) + 
+  geom_point(color = "black") +
+ geom_smooth(method = "lm", color = "coral3", fill = "coral3", alpha = 0.2) + 
+  labs(
+  x = "Proportion of developed land cover",
+  y = "Proportion of body mass lost (F)"
+) + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  theme 
+dev_M_plot + dev_F_plot
+
+
+
+fors_M_plot <- ggplot(subM_culv, aes(x = Forest, y = prop.loss)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "forestgreen", fill = "forestgreen", alpha = 0.2) + 
+  labs(
+  x = "Proportion of forest land cover",
+  y = "Proportion of body mass lost (M)"
+) + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  theme 
+
+fors_F_plot <- ggplot(subF_culv, aes(x = Forest, y = prop.loss)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "forestgreen", fill = "forestgreen", alpha = 0.2) + 
+  labs(
+  x = "Proportion of forest land cover",
+  y = "Proportion of body mass lost (F)"
+) + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  theme 
+
+fors_M_plot + fors_F_plot
+
+
+```
+
+
+
+
+
